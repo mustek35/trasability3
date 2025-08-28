@@ -27,6 +27,28 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     tilesNeedRedraw: true
   });
 
+  // Shapes drawn by the user
+  const [shapes, setShapes] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = window.localStorage.getItem('mapShapes');
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('mapShapes', JSON.stringify(shapes));
+    }
+  }, [shapes]);
+
+  const [drawMode, setDrawMode] = useState(null); // 'polygon' | 'rectangle' | 'circle' | 'text'
+  const [currentShape, setCurrentShape] = useState(null);
+
   // Throttled setState using requestAnimationFrame for smoother dragging
   const throttledSetMapState = useCallback((updates) => {
     pendingUpdateRef.current = { ...(pendingUpdateRef.current || {}), ...updates };
@@ -285,6 +307,94 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     ctx.lineWidth = 2;
     ctx.stroke();
 
+    const drawShape = (shape) => {
+      ctx.fillStyle = 'rgba(125,211,252,0.3)';
+      ctx.strokeStyle = '#7dd3fc';
+      ctx.lineWidth = 2;
+
+      if (shape.type === 'polygon') {
+        const pts = shape.points ? [...shape.points] : [];
+        if (shape.tempPoint) pts.push(shape.tempPoint);
+        if (pts.length >= 2) {
+          ctx.beginPath();
+          pts.forEach(([lon, lat], idx) => {
+            const [px, py] = lonLatToPixel(
+              lon, lat,
+              mapState.zoom, mapState.center[1], mapState.center[0],
+              width, height
+            );
+            if (idx === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          });
+          if (!shape.tempPoint && pts.length > 2) {
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.stroke();
+        }
+        if (shape.title) {
+          const centroid = pts.reduce((acc, p) => [acc[0] + p[0], acc[1] + p[1]], [0, 0]);
+          const count = pts.length;
+          const [clon, clat] = [centroid[0] / count, centroid[1] / count];
+          const [tx, ty] = lonLatToPixel(
+            clon, clat,
+            mapState.zoom, mapState.center[1], mapState.center[0],
+            width, height
+          );
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(shape.title, tx, ty);
+        }
+      } else if (shape.type === 'rectangle' && shape.points.length === 2) {
+        const [p1, p2] = shape.points;
+        const [p1x, p1y] = lonLatToPixel(p1[0], p1[1], mapState.zoom, mapState.center[1], mapState.center[0], width, height);
+        const [p2x, p2y] = lonLatToPixel(p2[0], p2[1], mapState.zoom, mapState.center[1], mapState.center[0], width, height);
+        const left = Math.min(p1x, p2x);
+        const top = Math.min(p1y, p2y);
+        const w = Math.abs(p2x - p1x);
+        const h = Math.abs(p2y - p1y);
+        ctx.beginPath();
+        ctx.rect(left, top, w, h);
+        ctx.fill();
+        ctx.stroke();
+        if (shape.title) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(shape.title, left + w / 2, top + h / 2);
+        }
+      } else if (shape.type === 'circle' && shape.points.length === 2) {
+        const [centerPoint, edgePoint] = shape.points;
+        const [cx, cy] = lonLatToPixel(centerPoint[0], centerPoint[1], mapState.zoom, mapState.center[1], mapState.center[0], width, height);
+        const [ex, ey] = lonLatToPixel(edgePoint[0], edgePoint[1], mapState.zoom, mapState.center[1], mapState.center[0], width, height);
+        const radius = Math.sqrt((ex - cx) ** 2 + (ey - cy) ** 2);
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+        if (shape.title) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(shape.title, cx, cy);
+        }
+      } else if (shape.type === 'text' && shape.points.length === 1) {
+        const [lon, lat] = shape.points[0];
+        const [tx, ty] = lonLatToPixel(
+          lon, lat,
+          mapState.zoom, mapState.center[1], mapState.center[0],
+          width, height
+        );
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(shape.title, tx, ty);
+      }
+    };
+
+    shapes.forEach(drawShape);
+    if (currentShape) drawShape(currentShape);
+
     // Dibujar trayectorias solo si hay datos
     if (detections && detections.length > 0) {
       // Usar requestIdleCallback si está disponible para no bloquear UI
@@ -381,8 +491,8 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
         drawTrajectories();
       }
     }
-  }, [detections, timelineCursor, mapState.center, mapState.zoom, hoveredTrajectory, 
-      lonLatToPixel, getVisiblePoints, getTrajectoryColor]);
+  }, [detections, timelineCursor, mapState.center, mapState.zoom, hoveredTrajectory,
+      lonLatToPixel, getVisiblePoints, getTrajectoryColor, shapes, currentShape]);
 
   // Animación de inercia optimizada
   const animateMovement = useCallback(() => {
@@ -459,10 +569,33 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
+    if (drawMode) {
+      const [lon, lat] = pixelToLonLat(
+        x, y, mapState.zoom,
+        mapState.center[1], mapState.center[0],
+        rect.width, rect.height
+      );
+
+      if (drawMode === 'polygon') {
+        setCurrentShape(prev => prev ? { ...prev, points: [...prev.points, [lon, lat]], tempPoint: undefined } : { type: 'polygon', points: [[lon, lat]] });
+      } else if (drawMode === 'rectangle') {
+        setCurrentShape({ type: 'rectangle', points: [[lon, lat], [lon, lat]] });
+      } else if (drawMode === 'circle') {
+        setCurrentShape({ type: 'circle', points: [[lon, lat], [lon, lat]] });
+      } else if (drawMode === 'text') {
+        const title = prompt('Título:');
+        if (title) {
+          setShapes(prev => [...prev, { type: 'text', points: [[lon, lat]], title }]);
+        }
+        setDrawMode(null);
+      }
+      return;
+    }
+
     setMapState(prev => ({ ...prev, isAnimating: false }));
     velocity.current = { x: 0, y: 0 };
-    
+
     setMapState(prev => ({
       ...prev,
       dragging: true,
@@ -473,37 +606,49 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
         centerLon: prev.center[1]
       }
     }));
-    
+
     lastMousePos.current = { x, y };
     lastMoveTime.current = Date.now();
-  }, []);
+  }, [drawMode, mapState.zoom, mapState.center, pixelToLonLat]);
 
   const handleMouseMove = useCallback((e) => {
-    if (!mapState.dragging || !mapState.dragStart) return;
-
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
+    if (drawMode && currentShape) {
+      const [lon, lat] = pixelToLonLat(
+        x, y, mapState.zoom,
+        mapState.center[1], mapState.center[0],
+        rect.width, rect.height
+      );
+      if (drawMode === 'polygon') {
+        setCurrentShape(prev => prev ? { ...prev, tempPoint: [lon, lat] } : prev);
+      } else if (drawMode === 'rectangle' || drawMode === 'circle') {
+        setCurrentShape(prev => ({ ...prev, points: [prev.points[0], [lon, lat]] }));
+      }
+      return;
+    }
+
+    if (!mapState.dragging || !mapState.dragStart) return;
+
     const deltaX = x - mapState.dragStart.x;
     const deltaY = y - mapState.dragStart.y;
 
     const now = Date.now();
     const timeDelta = now - lastMoveTime.current;
-    
+
     if (timeDelta > 0) {
       velocity.current.x = (x - lastMousePos.current.x) / timeDelta * 16;
       velocity.current.y = (y - lastMousePos.current.y) / timeDelta * 16;
     }
-    
+
     lastMousePos.current = { x, y };
     lastMoveTime.current = now;
-
 
     const scale = Math.pow(2, mapState.zoom);
     const latDelta = -deltaY * 180 / (256 * scale);
     const lonDelta = -deltaX * 360 / (256 * scale);
-
 
     // Usar throttledSetMapState para reducir re-renders durante drag
     throttledSetMapState({
@@ -513,19 +658,42 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
       ],
       tilesNeedRedraw: true
     });
-  }, [mapState.dragging, mapState.dragStart, mapState.zoom, throttledSetMapState]);
+  }, [drawMode, currentShape, mapState.dragging, mapState.dragStart, mapState.zoom, mapState.center, throttledSetMapState, pixelToLonLat]);
 
   const handleMouseUp = useCallback(() => {
+    if (drawMode && currentShape) {
+      if (drawMode === 'rectangle' || drawMode === 'circle') {
+        const title = prompt('Título:');
+        const shape = { ...currentShape };
+        if (title) shape.title = title;
+        setShapes(prev => [...prev, shape]);
+        setCurrentShape(null);
+        setDrawMode(null);
+      }
+      return;
+    }
+
     if (mapState.dragging) {
       const velocityMagnitude = Math.sqrt(velocity.current.x ** 2 + velocity.current.y ** 2);
-      setMapState(prev => ({ 
-        ...prev, 
-        dragging: false, 
-        dragStart: null, 
+      setMapState(prev => ({
+        ...prev,
+        dragging: false,
+        dragStart: null,
         isAnimating: velocityMagnitude > 3
       }));
     }
-  }, [mapState.dragging]);
+  }, [drawMode, currentShape, mapState.dragging]);
+
+  const handleDoubleClick = useCallback((e) => {
+    if (drawMode === 'polygon' && currentShape && currentShape.points.length > 2) {
+      e.preventDefault();
+      const title = prompt('Título:');
+      const points = currentShape.points.slice(0, -1);
+      setShapes(prev => [...prev, { type: 'polygon', points, title }]);
+      setCurrentShape(null);
+      setDrawMode(null);
+    }
+  }, [drawMode, currentShape]);
 
   const handleWheel = useCallback((e) => {
     e.preventDefault();
@@ -572,16 +740,33 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     }
   }, [mapState.zoom, mapState.center, pixelToLonLat, lonLatToPixel]);
 
+  const toggleMode = useCallback((mode) => {
+    setCurrentShape(null);
+    setDrawMode(prev => (prev === mode ? null : mode));
+  }, []);
+
+  const downloadJSON = useCallback(() => {
+    const data = JSON.stringify(shapes, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'shapes.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [shapes]);
+
   return (
     <div
       ref={containerRef}
       className="w-full h-full relative bg-gray-900 overflow-hidden select-none"
-      style={{ cursor: mapState.dragging ? 'grabbing' : 'grab' }}
+      style={{ cursor: mapState.dragging ? 'grabbing' : drawMode ? 'crosshair' : 'grab' }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onWheel={handleWheel}
+      onDoubleClick={handleDoubleClick}
     >
       {/* Canvas para tiles (fondo estático) */}
       <canvas
@@ -604,6 +789,39 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
           <span>Cargando...</span>
         </div>
       )}
+
+      <div className="absolute top-20 right-4 bg-gray-900 bg-opacity-90 rounded-lg shadow-lg p-2 z-10 border border-gray-700 flex flex-col gap-1">
+        <button
+          onClick={() => toggleMode('polygon')}
+          className={`w-24 px-2 py-1 rounded text-xs text-white ${drawMode === 'polygon' ? 'bg-gray-700' : 'bg-gray-800 hover:bg-gray-700'}`}
+        >
+          Polígono
+        </button>
+        <button
+          onClick={() => toggleMode('rectangle')}
+          className={`w-24 px-2 py-1 rounded text-xs text-white ${drawMode === 'rectangle' ? 'bg-gray-700' : 'bg-gray-800 hover:bg-gray-700'}`}
+        >
+          Cuadrado
+        </button>
+        <button
+          onClick={() => toggleMode('circle')}
+          className={`w-24 px-2 py-1 rounded text-xs text-white ${drawMode === 'circle' ? 'bg-gray-700' : 'bg-gray-800 hover:bg-gray-700'}`}
+        >
+          Círculo
+        </button>
+        <button
+          onClick={() => toggleMode('text')}
+          className={`w-24 px-2 py-1 rounded text-xs text-white ${drawMode === 'text' ? 'bg-gray-700' : 'bg-gray-800 hover:bg-gray-700'}`}
+        >
+          Título
+        </button>
+        <button
+          onClick={downloadJSON}
+          className="w-24 px-2 py-1 rounded text-xs text-white bg-gray-800 hover:bg-gray-700"
+        >
+          Guardar
+        </button>
+      </div>
 
       <div className="absolute top-4 left-4 bg-gray-900 bg-opacity-90 rounded-lg shadow-lg p-1 z-10 border border-gray-700">
         <button
