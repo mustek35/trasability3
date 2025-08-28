@@ -1,0 +1,153 @@
+/* Estilos globales específicos de la aplicación */
+
+.radar-app {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Clases utilitarias personalizadas */
+.glass-effect {
+  background: rgba(31, 41, 55, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(75, 85, 99, 0.3);
+}
+
+.trajectory-glow {
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+.pulse-soft {
+  animation: pulse-soft 2s infinite;
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Estados de conexión */
+.status-connected {
+  color: #10b981;
+}
+
+.status-disconnected {
+  color: #ef4444;
+}
+
+.status-connecting {
+  color: #f59e0b;
+}
+
+/* Tooltips personalizados */
+.tooltip {
+  position: relative;
+}
+
+.tooltip::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.tooltip:hover::before {
+  opacity: 1;
+}
+
+/* Grid de horas mejorado */
+.hour-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 8px;
+}
+
+/* Botones de acción rápida */
+.quick-action-btn {
+  @apply inline-flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 hover:scale-110 active:scale-95;
+}
+
+/* Indicadores de estado */
+.indicator-dot {
+  @apply inline-block w-2 h-2 rounded-full;
+}
+
+.indicator-dot.active {
+  @apply bg-green-500 animate-pulse;
+}
+
+.indicator-dot.inactive {
+  @apply bg-gray-500;
+}
+
+/* Mejoras para dispositivos móviles */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .timeline-controls {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .trajectory-info {
+    width: 100%;
+    position: relative;
+    top: auto;
+    right: auto;
+    max-height: 200px;
+  }
+}
+
+/* Estados de carga */
+.loading-shimmer {
+  background: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Efectos de mapa */
+.map-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.trajectory-point {
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+}
+
+/* Mejoras de rendimiento */
+.gpu-accelerated {
+  transform: translateZ(0);
+  will-change: transform;
+}
