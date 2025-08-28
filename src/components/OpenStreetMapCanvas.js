@@ -32,7 +32,9 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     if (typeof window !== 'undefined') {
       try {
         const saved = window.localStorage.getItem('mapShapes');
+
         return saved ? JSON.parse(saved) : [];
+
       } catch {
         return [];
       }
@@ -45,6 +47,7 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
       window.localStorage.setItem('mapShapes', JSON.stringify(shapes));
     }
   }, [shapes]);
+
 
   const [drawMode, setDrawMode] = useState(null); // 'polygon' | 'rectangle' | 'circle' | 'text'
   const [currentShape, setCurrentShape] = useState(null);
@@ -307,7 +310,9 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     ctx.lineWidth = 2;
     ctx.stroke();
 
+
     const drawShape = (shape) => {
+
       ctx.fillStyle = 'rgba(125,211,252,0.3)';
       ctx.strokeStyle = '#7dd3fc';
       ctx.lineWidth = 2;
@@ -494,6 +499,46 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
   }, [detections, timelineCursor, mapState.center, mapState.zoom, hoveredTrajectory,
       lonLatToPixel, getVisiblePoints, getTrajectoryColor, shapes, currentShape]);
 
+
+  const getShapeBoundingBox = useCallback((shape, width, height) => {
+    if (!shape) return null;
+    if (shape.type === 'polygon') {
+      const pixels = shape.points.map(([lon, lat]) =>
+        lonLatToPixel(lon, lat, mapState.zoom, mapState.center[1], mapState.center[0], width, height)
+      );
+      const xs = pixels.map(p => p[0]);
+      const ys = pixels.map(p => p[1]);
+      return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
+    }
+    if (shape.type === 'rectangle' && shape.points.length === 2) {
+      const [p1, p2] = shape.points;
+      const [p1x, p1y] = lonLatToPixel(p1[0], p1[1], mapState.zoom, mapState.center[1], mapState.center[0], width, height);
+      const [p2x, p2y] = lonLatToPixel(p2[0], p2[1], mapState.zoom, mapState.center[1], mapState.center[0], width, height);
+      return {
+        left: Math.min(p1x, p2x),
+        top: Math.min(p1y, p2y),
+        right: Math.max(p1x, p2x),
+        bottom: Math.max(p1y, p2y)
+      };
+    }
+    if (shape.type === 'circle' && shape.points.length === 2) {
+      const [c, e] = shape.points;
+      const [cx, cy] = lonLatToPixel(c[0], c[1], mapState.zoom, mapState.center[1], mapState.center[0], width, height);
+      const [ex, ey] = lonLatToPixel(e[0], e[1], mapState.zoom, mapState.center[1], mapState.center[0], width, height);
+      const r = Math.sqrt((ex - cx) ** 2 + (ey - cy) ** 2);
+      return { left: cx - r, top: cy - r, right: cx + r, bottom: cy + r };
+    }
+    if (shape.type === 'text' && shape.points.length === 1) {
+      const [lon, lat] = shape.points[0];
+      const [tx, ty] = lonLatToPixel(lon, lat, mapState.zoom, mapState.center[1], mapState.center[0], width, height);
+      const w = Math.max(40, (shape.title ? shape.title.length : 1) * 7);
+      const h = 20;
+      return { left: tx - w / 2, top: ty - h / 2, right: tx + w / 2, bottom: ty + h / 2 };
+    }
+    return null;
+  }, [lonLatToPixel, mapState.zoom, mapState.center]);
+
+
   // Animación de inercia optimizada
   const animateMovement = useCallback(() => {
     if (!mapState.isAnimating) return;
@@ -586,7 +631,9 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
       } else if (drawMode === 'text') {
         const title = prompt('Título:');
         if (title) {
+
           setShapes(prev => [...prev, { type: 'text', points: [[lon, lat]], title }]);
+
         }
         setDrawMode(null);
       }
@@ -664,7 +711,9 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     if (drawMode && currentShape) {
       if (drawMode === 'rectangle' || drawMode === 'circle') {
         const title = prompt('Título:');
+
         const shape = { ...currentShape };
+
         if (title) shape.title = title;
         setShapes(prev => [...prev, shape]);
         setCurrentShape(null);
@@ -689,11 +738,13 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
       e.preventDefault();
       const title = prompt('Título:');
       const points = currentShape.points.slice(0, -1);
+
       setShapes(prev => [...prev, { type: 'polygon', points, title }]);
       setCurrentShape(null);
       setDrawMode(null);
     }
   }, [drawMode, currentShape]);
+
 
   const handleWheel = useCallback((e) => {
     e.preventDefault();
@@ -768,6 +819,7 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
       onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
     >
+
       {/* Canvas para tiles (fondo estático) */}
       <canvas
         ref={tilesCanvasRef}
@@ -781,7 +833,7 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
         className="absolute top-0 left-0 w-full h-full block"
         style={{ zIndex: 2 }}
       />
-      
+
       {/* UI Controls */}
       {mapState.tilesLoaded.size > mapState.tileImages.size && (
         <div className="absolute top-4 right-4 bg-gray-900 bg-opacity-90 rounded-lg shadow-lg p-2 text-xs text-gray-300 z-10 border border-gray-700 flex items-center gap-2">
