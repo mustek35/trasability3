@@ -32,8 +32,9 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     if (typeof window !== 'undefined') {
       try {
         const saved = window.localStorage.getItem('mapShapes');
-        const parsed = saved ? JSON.parse(saved) : [];
-        return parsed.map((s, i) => ({ id: s.id ?? Date.now() + i, ...s }));
+
+        return saved ? JSON.parse(saved) : [];
+
       } catch {
         return [];
       }
@@ -47,7 +48,6 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     }
   }, [shapes]);
 
-  const [selectedShape, setSelectedShape] = useState(null); // { id, x, y }
 
   const [drawMode, setDrawMode] = useState(null); // 'polygon' | 'rectangle' | 'circle' | 'text'
   const [currentShape, setCurrentShape] = useState(null);
@@ -310,7 +310,9 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     ctx.lineWidth = 2;
     ctx.stroke();
 
-  const drawShape = (shape) => {
+
+    const drawShape = (shape) => {
+
       ctx.fillStyle = 'rgba(125,211,252,0.3)';
       ctx.strokeStyle = '#7dd3fc';
       ctx.lineWidth = 2;
@@ -497,6 +499,7 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
   }, [detections, timelineCursor, mapState.center, mapState.zoom, hoveredTrajectory,
       lonLatToPixel, getVisiblePoints, getTrajectoryColor, shapes, currentShape]);
 
+
   const getShapeBoundingBox = useCallback((shape, width, height) => {
     if (!shape) return null;
     if (shape.type === 'polygon') {
@@ -534,6 +537,7 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     }
     return null;
   }, [lonLatToPixel, mapState.zoom, mapState.center]);
+
 
   // Animación de inercia optimizada
   const animateMovement = useCallback(() => {
@@ -627,7 +631,9 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
       } else if (drawMode === 'text') {
         const title = prompt('Título:');
         if (title) {
-          setShapes(prev => [...prev, { id: Date.now(), type: 'text', points: [[lon, lat]], title }]);
+
+          setShapes(prev => [...prev, { type: 'text', points: [[lon, lat]], title }]);
+
         }
         setDrawMode(null);
       }
@@ -705,7 +711,9 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     if (drawMode && currentShape) {
       if (drawMode === 'rectangle' || drawMode === 'circle') {
         const title = prompt('Título:');
-        const shape = { ...currentShape, id: Date.now() };
+
+        const shape = { ...currentShape };
+
         if (title) shape.title = title;
         setShapes(prev => [...prev, shape]);
         setCurrentShape(null);
@@ -730,29 +738,13 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
       e.preventDefault();
       const title = prompt('Título:');
       const points = currentShape.points.slice(0, -1);
-      setShapes(prev => [...prev, { id: Date.now(), type: 'polygon', points, title }]);
+
+      setShapes(prev => [...prev, { type: 'polygon', points, title }]);
       setCurrentShape(null);
       setDrawMode(null);
-      return;
     }
+  }, [drawMode, currentShape]);
 
-    if (drawMode) return; // ignore while drawing other shapes
-
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const width = rect.width;
-    const height = rect.height;
-
-    for (let shape of shapes) {
-      const box = getShapeBoundingBox(shape, width, height);
-      if (box && x >= box.left && x <= box.right && y >= box.top && y <= box.bottom) {
-        setSelectedShape({ id: shape.id, x: box.right, y: box.top });
-        return;
-      }
-    }
-    setSelectedShape(null);
-  }, [drawMode, currentShape, shapes, getShapeBoundingBox]);
 
   const handleWheel = useCallback((e) => {
     e.preventDefault();
@@ -827,13 +819,14 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
       onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
     >
+
       {/* Canvas para tiles (fondo estático) */}
       <canvas
         ref={tilesCanvasRef}
         className="absolute top-0 left-0 w-full h-full block"
         style={{ zIndex: 1 }}
       />
-
+      
       {/* Canvas para elementos dinámicos (trayectorias) */}
       <canvas
         ref={canvasRef}
@@ -841,20 +834,6 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
         style={{ zIndex: 2 }}
       />
 
-      {selectedShape && (
-        <button
-          className="absolute bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
-          style={{ zIndex: 3, left: selectedShape.x - 10, top: selectedShape.y - 10 }}
-          onClick={(e) => {
-            e.stopPropagation();
-            setShapes(prev => prev.filter(s => s.id !== selectedShape.id));
-            setSelectedShape(null);
-          }}
-        >
-          ×
-        </button>
-      )}
-      
       {/* UI Controls */}
       {mapState.tilesLoaded.size > mapState.tileImages.size && (
         <div className="absolute top-4 right-4 bg-gray-900 bg-opacity-90 rounded-lg shadow-lg p-2 text-xs text-gray-300 z-10 border border-gray-700 flex items-center gap-2">
