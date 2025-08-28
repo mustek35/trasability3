@@ -6,7 +6,8 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
   const tilesCanvasRef = useRef(null); // Canvas separado para tiles (estático)
   const containerRef = useRef(null);
   const animationFrameRef = useRef(null);
-  const renderTimeoutRef = useRef(null);
+  const frameRequestedRef = useRef(false);
+  const pendingUpdateRef = useRef(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const velocity = useRef({ x: 0, y: 0 });
   const lastMoveTime = useRef(0);
@@ -23,15 +24,17 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     tilesNeedRedraw: true
   });
 
-  // Debounced setState para reducir re-renders durante drag
-  const debouncedSetMapState = useCallback((updates) => {
-    if (renderTimeoutRef.current) {
-      clearTimeout(renderTimeoutRef.current);
+  // Throttled setState using requestAnimationFrame for smoother dragging
+  const throttledSetMapState = useCallback((updates) => {
+    pendingUpdateRef.current = { ...(pendingUpdateRef.current || {}), ...updates };
+    if (!frameRequestedRef.current) {
+      frameRequestedRef.current = true;
+      requestAnimationFrame(() => {
+        setMapState(prev => ({ ...prev, ...pendingUpdateRef.current }));
+        pendingUpdateRef.current = null;
+        frameRequestedRef.current = false;
+      });
     }
-    
-    renderTimeoutRef.current = setTimeout(() => {
-      setMapState(prev => ({ ...prev, ...updates }));
-    }, 16); // ~60fps
   }, []);
 
   // Función optimizada para cargar tiles con pool de conexiones
@@ -496,15 +499,15 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     const latDelta = -deltaY * 180 / (256 * scale);
     const lonDelta = -deltaX * 360 / (256 * scale);
 
-    // Usar debouncedSetMapState para reducir re-renders durante drag
-    debouncedSetMapState({
+    // Usar throttledSetMapState para reducir re-renders durante drag
+    throttledSetMapState({
       center: [
         Math.max(-85, Math.min(85, mapState.dragStart.centerLat + latDelta)),
         ((mapState.dragStart.centerLon + lonDelta + 540) % 360) - 180
       ],
       tilesNeedRedraw: true
     });
-  }, [mapState.dragging, mapState.dragStart, mapState.zoom, debouncedSetMapState]);
+  }, [mapState.dragging, mapState.dragStart, mapState.zoom, throttledSetMapState]);
 
   const handleMouseUp = useCallback(() => {
     if (mapState.dragging) {
