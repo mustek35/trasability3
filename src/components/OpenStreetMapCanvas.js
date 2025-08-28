@@ -6,7 +6,6 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
   const tilesCanvasRef = useRef(null); // Canvas separado para tiles (estático)
   const containerRef = useRef(null);
   const animationFrameRef = useRef(null);
-  const renderTimeoutRef = useRef(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const velocity = useRef({ x: 0, y: 0 });
   const lastMoveTime = useRef(0);
@@ -16,23 +15,11 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     center: CONFIG.MAP.CENTER,
     zoom: CONFIG.MAP.ZOOM,
     dragging: false,
-    dragStart: null,
     tileImages: new Map(),
     tilesLoaded: new Set(),
     isAnimating: false,
     tilesNeedRedraw: true
   });
-
-  // Debounced setState para reducir re-renders durante drag
-  const debouncedSetMapState = useCallback((updates) => {
-    if (renderTimeoutRef.current) {
-      clearTimeout(renderTimeoutRef.current);
-    }
-    
-    renderTimeoutRef.current = setTimeout(() => {
-      setMapState(prev => ({ ...prev, ...updates }));
-    }, 16); // ~60fps
-  }, []);
 
   // Función optimizada para cargar tiles con pool de conexiones
   const loadTile = useCallback(async (x, y, zoom) => {
@@ -452,43 +439,32 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
-    setMapState(prev => ({ ...prev, isAnimating: false }));
+
+    setMapState(prev => ({ ...prev, isAnimating: false, dragging: true }));
     velocity.current = { x: 0, y: 0 };
-    
-    setMapState(prev => ({
-      ...prev,
-      dragging: true,
-      dragStart: {
-        x: x,
-        y: y,
-        centerLat: prev.center[0],
-        centerLon: prev.center[1]
-      }
-    }));
-    
+
     lastMousePos.current = { x, y };
     lastMoveTime.current = Date.now();
   }, []);
 
   const handleMouseMove = useCallback((e) => {
-    if (!mapState.dragging || !mapState.dragStart) return;
+    if (!mapState.dragging) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
-    const deltaX = x - mapState.dragStart.x;
-    const deltaY = y - mapState.dragStart.y;
+
+    const deltaX = x - lastMousePos.current.x;
+    const deltaY = y - lastMousePos.current.y;
 
     const now = Date.now();
     const timeDelta = now - lastMoveTime.current;
-    
+
     if (timeDelta > 0) {
-      velocity.current.x = (x - lastMousePos.current.x) / timeDelta * 16;
-      velocity.current.y = (y - lastMousePos.current.y) / timeDelta * 16;
+      velocity.current.x = deltaX / timeDelta * 16;
+      velocity.current.y = deltaY / timeDelta * 16;
     }
-    
+
     lastMousePos.current = { x, y };
     lastMoveTime.current = now;
 
@@ -496,23 +472,22 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     const latDelta = -deltaY * 180 / (256 * scale);
     const lonDelta = -deltaX * 360 / (256 * scale);
 
-    // Usar debouncedSetMapState para reducir re-renders durante drag
-    debouncedSetMapState({
+    setMapState(prev => ({
+      ...prev,
       center: [
-        Math.max(-85, Math.min(85, mapState.dragStart.centerLat + latDelta)),
-        ((mapState.dragStart.centerLon + lonDelta + 540) % 360) - 180
+        Math.max(-85, Math.min(85, prev.center[0] + latDelta)),
+        ((prev.center[1] + lonDelta + 540) % 360) - 180
       ],
       tilesNeedRedraw: true
-    });
-  }, [mapState.dragging, mapState.dragStart, mapState.zoom, debouncedSetMapState]);
+    }));
+  }, [mapState.dragging, mapState.zoom]);
 
   const handleMouseUp = useCallback(() => {
     if (mapState.dragging) {
       const velocityMagnitude = Math.sqrt(velocity.current.x ** 2 + velocity.current.y ** 2);
-      setMapState(prev => ({ 
-        ...prev, 
-        dragging: false, 
-        dragStart: null, 
+      setMapState(prev => ({
+        ...prev,
+        dragging: false,
         isAnimating: velocityMagnitude > 3
       }));
     }
