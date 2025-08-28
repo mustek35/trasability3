@@ -6,6 +6,7 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
   const tilesCanvasRef = useRef(null); // Canvas separado para tiles (estático)
   const containerRef = useRef(null);
   const animationFrameRef = useRef(null);
+
   const frameRequestedRef = useRef(false);
   const pendingUpdateRef = useRef(null);
   const lastMousePos = useRef({ x: 0, y: 0 });
@@ -13,9 +14,11 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
   const lastMoveTime = useRef(0);
   const lastRenderState = useRef(null);
 
+
   const [mapState, setMapState] = useState({
     center: CONFIG.MAP.CENTER,
     zoom: CONFIG.MAP.ZOOM,
+
     dragging: false,
     dragStart: null,
     tileImages: new Map(),
@@ -451,6 +454,7 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
   }, [mapState.tileImages.size]);
 
   // Eventos optimizados
+
   const handleMouseDown = useCallback((e) => {
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -495,9 +499,11 @@ const OpenStreetMapCanvas = ({ detections, timelineCursor, selectedHour, hovered
     lastMousePos.current = { x, y };
     lastMoveTime.current = now;
 
+
     const scale = Math.pow(2, mapState.zoom);
     const latDelta = -deltaY * 180 / (256 * scale);
     const lonDelta = -deltaX * 360 / (256 * scale);
+
 
     // Usar throttledSetMapState para reducir re-renders durante drag
     throttledSetMapState({
